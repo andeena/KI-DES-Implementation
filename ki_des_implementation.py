@@ -153,15 +153,12 @@ def permutation(data, initial=True):
     table = IP if initial else FP
     return np.array([data[i-1] for i in table])
 
-# Fungsi shift key
 def keyshift(toshift, n):
     return np.roll(toshift, -1 if n in [1, 2, 9, 16] else -2)
 
-# Fungsi permutasi kunci
 def keypermute(key16):
     return np.array([[key[i - 1] for i in key_PBox] for key in key16])
 
-# Membuat jadwal kunci
 def keyschedule(key):
     left, right = key[:28], key[28:]
     key16 = np.zeros((16, 56), dtype=int)
@@ -170,7 +167,6 @@ def keyschedule(key):
         key16[i-1] = np.concatenate([left, right])
     return keypermute(key16)
 
-# Fungsi untuk generate kunci
 def generate_hex_key():
     return secrets.token_hex(8)
 
@@ -189,18 +185,15 @@ def bits_to_text(bits):
     # Convert binary string back to integer
     n = int(bits_str, 2)
     try:
-        # Convert the integer back to bytes and decode as UTF-8 (removing padding)
         return n.to_bytes((n.bit_length() + 7) // 8, 'big').decode('utf-8')
     except UnicodeDecodeError:
-        # If UTF-8 decoding fails, return a placeholder message
         return "[Decrypted non-UTF-8 data]"
 
-# Fungsi untuk mengkonversi bit ke hexadecimal
+# mengkonversi bit ke hexadecimal
 def bits_to_hex(bits):
     n = int(''.join(map(str, bits)), 2)
-    return hex(n)[2:].zfill(16)  # Ensure it's padded to a minimum of 16 hex digits
+    return hex(n)[2:].zfill(16)  
 
-# Fungsi input
 def userinput():
     text = input("Enter the text to encrypt: ")
     keyinp = generate_hex_key()
@@ -211,7 +204,6 @@ def userinput():
     print(f"Text in bits: {data_bits}")
     return keyinp_bin, data_bits
 
-# Fungsi utama
 def main():
     key, data_bits = userinput()
     key16 = keyschedule(key)
