@@ -100,58 +100,34 @@ key_PBox = [14,    17,   11,    24,     1,    5,
                  30,    40,   51,    45,    33,   48,
                  44,    49,   39,    56,    34,  53,
                  46,    42,   50,    36,    29,   32]
-# Fungsi untuk melakukan XOR
+
 def xor(left, xorstream):
-    xorresult = np.logical_xor(left, xorstream)
-    return xorresult.astype(int)
+    return np.logical_xor(left, xorstream).astype(int)
 
-# Fungsi EBox untuk ekspansi
 def E_box(right):
-    expanded = np.empty(48)
-    j = 0
-    for i in EBox:
-        expanded[j] = right[i - 1]
-        j += 1
-    expanded = list(map(int, expanded))
-    return np.array(expanded)
+    return np.array([right[i - 1] for i in EBox])
 
-# Fungsi lookup SBox
-def sboxloopup(sinput, x):
-    tableno = x - 1
-    row = int((np.array2string(sinput[0]) + np.array2string(sinput[5])), 2)
-    column = int(np.array2string(sinput[1:5])[1:8].replace(" ", ""), 2)
-    elementno = (16 * row) + column
-    soutput = SBox[tableno][elementno]
-    return np.array(list(map(int, np.binary_repr(soutput, width=4))))
+def sboxlookup(sinput, x):
+    row = sinput[0] * 2 + sinput[5]
+    col = int(''.join(map(str, sinput[1:5])), 2)
+    return np.array(list(map(int, f'{SBox[x - 1][row * 16 + col]:04b}')))
 
-# Fungsi SBox
 def sbox(sboxin):
-    return np.concatenate([sboxloopup(sboxin[i:i+6], i//6 + 1) for i in range(0, 48, 6)])
+    return np.concatenate([sboxlookup(sboxin[i:i+6], i//6 + 1) for i in range(0, 48, 6)])
 
-# Permutasi
 def f_permute(topermute):
-    permuted = np.empty(32)
-    for j, i in enumerate(F_PBox):
-        permuted[j] = topermute[i - 1]
-    return permuted
+    return np.array([topermute[i - 1] for i in F_PBox])
 
-# Fungsi f pada DES
 def f_function(right, rkey):
     expanded = E_box(right)
     xored = xor(expanded, rkey)
     sboxed = sbox(xored)
     return f_permute(sboxed)
 
-# Fungsi round DES
 def round(data, rkey):
     l0, r0 = data[:32], data[32:]
     r1 = xor(l0, f_function(r0, rkey))
     return np.concatenate([r0, r1])
-
-# Permutasi awal dan final
-def permutation(data, initial=True):
-    table = IP if initial else FP
-    return np.array([data[i-1] for i in table])
 
 def keyshift(toshift, n):
     return np.roll(toshift, -1 if n in [1, 2, 9, 16] else -2)
@@ -161,68 +137,87 @@ def keypermute(key16):
 
 def keyschedule(key):
     left, right = key[:28], key[28:]
-    key16 = np.zeros((16, 56), dtype=int)
-    for i in range(1, 17):
-        left, right = keyshift(left, i), keyshift(right, i)
-        key16[i-1] = np.concatenate([left, right])
+    key16 = []
+    for i in range(16):
+        left = keyshift(left, i + 1)
+        right = keyshift(right, i + 1)
+        key16.append(np.concatenate([left, right]))
     return keypermute(key16)
 
 def generate_hex_key():
-    return secrets.token_hex(8)
+    return secrets.token_hex(7)  # 56 bits = 7 bytes
 
-# Fungsi untuk mengkonversi teks ke bit (dengan padding)
+def permutation(data, table):
+    # Pastikan data memiliki panjang yang cukup
+    if len(data) < max(table):
+        # Jika data terlalu pendek, tambahkan padding
+        padded_data = np.pad(data, (0, max(table) - len(data)), 'constant')
+    else:
+        padded_data = data
+    
+    # Lakukan permutasi
+    return np.array([padded_data[i - 1] for i in table])
+
+def pad(text):
+    pad_len = 8 - (len(text) % 8)
+    return text + chr(pad_len) * pad_len
+
+def unpad(text):
+    pad_len = ord(text[-1])
+    return text[:-pad_len]
+
 def text_to_bits(text):
-    # Convert text to bits and pad to make sure it's a multiple of 64 bits
-    text_bits = np.array(list(map(int, bin(int.from_bytes(text.encode(), 'big'))[2:].zfill(64))))
-    while len(text_bits) % 64 != 0:
-        text_bits = np.append(text_bits, 0)
-    return text_bits
+    return np.array([int(b) for char in text for b in f'{ord(char):08b}'])
 
-# Fungsi untuk mengkonversi bit ke teks (menghapus padding)
 def bits_to_text(bits):
-    # Join the bits to form a binary string
-    bits_str = ''.join(map(str, bits))
-    # Convert binary string back to integer
-    n = int(bits_str, 2)
-    try:
-        return n.to_bytes((n.bit_length() + 7) // 8, 'big').decode('utf-8')
-    except UnicodeDecodeError:
-        return "[Decrypted non-UTF-8 data]"
+    return ''.join([chr(int(''.join(map(str, bits[i:i+8])), 2)) for i in range(0, len(bits), 8)])
 
-# mengkonversi bit ke hexadecimal
 def bits_to_hex(bits):
-    n = int(''.join(map(str, bits)), 2)
-    return hex(n)[2:].zfill(16)  
+    return hex(int(''.join(map(str, bits)), 2))[2:].zfill(16)
 
-def userinput():
-    text = input("Enter the text to encrypt: ")
-    keyinp = generate_hex_key()
-    print(f"Generated Key: {keyinp}")
-    keyinp_bin = bin(int(keyinp, 16))[2:].zfill(64)[:56]
-    keyinp_bin = list(map(int, keyinp_bin))
-    data_bits = text_to_bits(text)
-    print(f"Text in bits: {data_bits}")
-    return keyinp_bin, data_bits
+def hex_to_bits(hex_string):
+    return np.array([int(b) for b in f'{int(hex_string, 16):064b}'])
+
+def encrypt_block(block, key16):
+    block = permutation(block, IP)
+    for i in range(16):
+        block = round(block, key16[i])
+    block = np.concatenate([block[32:], block[:32]])
+    return permutation(block, FP)
+
+def decrypt_block(block, key16):
+    block = permutation(block, IP)
+    for i in range(15, -1, -1):
+        block = round(block, key16[i])
+    block = np.concatenate([block[32:], block[:32]])
+    return permutation(block, FP)
+
+def encrypt(plaintext, key):
+    key16 = keyschedule(key)
+    padded_text = pad(plaintext)
+    bits = text_to_bits(padded_text)
+    encrypted_bits = np.concatenate([encrypt_block(bits[i:i+64], key16) for i in range(0, len(bits), 64)])
+    return bits_to_hex(encrypted_bits)
+
+def decrypt(ciphertext, key):
+    key16 = keyschedule(key)
+    encrypted_bits = hex_to_bits(ciphertext)
+    decrypted_bits = np.concatenate([decrypt_block(encrypted_bits[i:i+64], key16) for i in range(0, len(encrypted_bits), 64)])
+    decrypted_text = bits_to_text(decrypted_bits)
+    return unpad(decrypted_text)
 
 def main():
-    key, data_bits = userinput()
-    key16 = keyschedule(key)
-    encrypted = permutation(data_bits, initial=True)
-
-    for i in range(16):
-        encrypted = round(encrypted, key16[i])
-
-    encrypted = permutation(encrypted, initial=False)
-    print(f"Encrypted bits: {encrypted}")
-    print(f"Cipher text: {bits_to_hex(encrypted)}")
-
-    decrypted = permutation(encrypted, initial=True)
-    for i in reversed(range(16)):
-        decrypted = round(decrypted, key16[i])
-
-    decrypted = permutation(decrypted, initial=False)
-    print(f"Decrypted bits: {decrypted}")
-    print(f"Decrypted text: {bits_to_text(decrypted)}")
+    plaintext = input("Enter the text to encrypt: ")
+    key_hex = generate_hex_key()
+    key = np.array([int(b) for b in f'{int(key_hex, 16):056b}'])
+    
+    print(f"Generated Key: {key_hex}")
+    
+    ciphertext = encrypt(plaintext, key)
+    print(f"Cipher text (hex): {ciphertext}")
+    
+    decrypted_text = decrypt(ciphertext, key)
+    print(f"Decrypted text: {decrypted_text}")
 
 if __name__ == "__main__":
     main()
